@@ -10,8 +10,17 @@ from pygments.formatters import HtmlFormatter
 
 def markdown_to_html_final(markdown_text):
     """
-    Robustly converts Markdown to HTML by separating code blocks, processing them with
-    Pygments, and then re-injecting them into the final HTML.
+    Converts a Markdown string to HTML, with special handling for code blocks.
+
+    This function finds all fenced code blocks, highlights them using Pygments,
+    replaces them with placeholders, converts the remaining Markdown to HTML,
+    and then re-injects the highlighted code blocks back into the HTML.
+
+    Args:
+        markdown_text (str): The Markdown text to convert.
+
+    Returns:
+        str: The fully-formatted HTML.
     """
     highlighted_blocks = []
 
@@ -57,7 +66,20 @@ def markdown_to_html_final(markdown_text):
     return html_output
 
 def merge_pdfs(main_pdf_path, new_page_path):
-    """Merges a new page into the main PDF."""
+    """
+    Merges a newly created PDF page into an existing PDF document.
+
+    If the main PDF does not exist, the new page is renamed to become the
+    main PDF. Otherwise, the new page is appended to the existing pages.
+    The temporary new page file is always removed.
+
+    Args:
+        main_pdf_path (str): The path to the main (destination) PDF file.
+        new_page_path (str): The path to the temporary single-page PDF to merge.
+
+    Returns:
+        bool: True on success, False on failure.
+    """
     try:
         if not os.path.exists(main_pdf_path):
             os.rename(new_page_path, main_pdf_path)
@@ -84,7 +106,22 @@ def merge_pdfs(main_pdf_path, new_page_path):
 
 def create_pdf_page(user_text, model_text, output_path, show_headings=True, user_heading="User Message", model_heading="Model Response"):
     """
-    Creates a styled PDF page by calling the Puppeteer Node.js script.
+    Creates a single, styled PDF page from user and model text.
+
+    This function generates an HTML file from the input text, applying CSS
+    styling and Markdown-to-HTML conversion. It then invokes a Node.js
+    script (using Puppeteer) to render this HTML into a PDF.
+
+    Args:
+        user_text (str): The text from the user message input.
+        model_text (str): The text from the model response input.
+        output_path (str): The path where the generated PDF page will be saved.
+        show_headings (bool, optional): If True, headings are included. Defaults to True.
+        user_heading (str, optional): The heading for the user section. Defaults to "User Message".
+        model_heading (str, optional): The heading for the model section. Defaults to "Model Response".
+
+    Returns:
+        bool: True if the PDF was created successfully, False otherwise.
     """
     temp_html_path = os.path.join(os.path.dirname(__file__), '_temp.html')
     
