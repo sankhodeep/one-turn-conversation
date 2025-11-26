@@ -2,6 +2,17 @@ const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
 
+/**
+ * Generates a PDF from a temporary HTML file using Puppeteer.
+ *
+ * This script is called by the Python backend. It launches a headless Chrome
+ * instance, reads the content from `_temp.html`, renders it, and saves it
+ * as `_temp_page.pdf`. The Python script is responsible for creating the
+ * HTML file beforehand and handling the generated PDF afterward.
+ *
+ * @returns {Promise<void>} A promise that resolves when the PDF is generated.
+ *                          The process will exit with a non-zero error code on failure.
+ */
 async function generatePdf() {
     try {
         const browser = await puppeteer.launch({

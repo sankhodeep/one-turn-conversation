@@ -11,10 +11,29 @@ from pdf_engine import create_pdf_page, merge_pdfs
 
 # --- Communication object for worker thread ---
 class WorkerSignals(QObject):
-    finished = Signal(str)  # Emits a string message on completion or error
+    """
+    Defines the signals available from a running worker thread.
+
+    Supported signals are:
+    - finished: Emits a string to indicate task completion or error.
+    """
+    finished = Signal(str)
 
 class PdfWorker(QObject):
-    """Worker thread for creating and merging PDFs to keep the UI responsive."""
+    """
+    Runs the PDF creation and merging process in a separate thread.
+
+    This worker prevents the GUI from freezing during I/O-intensive operations.
+    It communicates its status back to the main thread via signals.
+
+    Args:
+        user_text (str): The text from the user message input.
+        model_text (str): The text from the model response input.
+        main_pdf_path (str): The absolute path to the main PDF file.
+        show_headings (bool): If True, headings will be added to the PDF.
+        user_heading (str): The heading for the user message section.
+        model_heading (str): The heading for the model response section.
+    """
     def __init__(self, user_text, model_text, main_pdf_path, show_headings, user_heading, model_heading):
         super().__init__()
         self.signals = WorkerSignals()
@@ -26,6 +45,13 @@ class PdfWorker(QObject):
         self.model_heading = model_heading
 
     def run(self):
+        """
+        Executes the PDF generation and merging task.
+
+        Creates a temporary PDF page with the provided text and then merges it
+        into the main PDF document. Emits a 'finished' signal with a success
+        or error message.
+        """
         try:
             temp_page_path = "_temp_page.pdf"
             
@@ -46,6 +72,13 @@ class PdfWorker(QObject):
 
 # --- Main Application Window ---
 class MainWindow(QMainWindow):
+    """
+    The main application window for the Conversation Archiver.
+
+    This class sets up the user interface, including text boxes, buttons,
+    and file selection dialogs. It handles user interactions and launches
+    the PDF worker thread.
+    """
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Conversation Archiver")
@@ -93,11 +126,19 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(bottom_layout)
 
     def choose_file(self):
+        """Opens a file dialog to select the main PDF file."""
         filepath, _ = QFileDialog.getOpenFileName(self, "Select Your Main PDF File", "", "PDF Files (*.pdf)")
         if filepath:
             self.pdf_path_label.setText(filepath)
 
     def process_and_add_pdf(self):
+        """
+        Validates inputs and starts the PDF worker thread.
+
+        Retrieves text from the input boxes and the selected PDF path,
+        performs basic validation, and then creates and starts a PdfWorker
+        to handle the PDF generation.
+        """
         user_text = self.user_text_box.toPlainText().strip()
         model_text = self.model_text_box.toPlainText().strip()
         main_pdf_path = self.pdf_path_label.text()
@@ -124,6 +165,15 @@ class MainWindow(QMainWindow):
         self.thread.start()
 
     def on_processing_finished(self, message):
+        """
+        Handles the 'finished' signal from the PDF worker thread.
+
+        Updates the status label with the result message, clears the text
+        boxes on success, and re-enables the 'Add to PDF' button.
+
+        Args:
+            message (str): The status message from the worker.
+        """
         if message.startswith("Error"):
             QMessageBox.critical(self, "Error", message)
             self.status_label.setText("Status: Error!")
@@ -134,6 +184,7 @@ class MainWindow(QMainWindow):
         self.add_button.setEnabled(True)
 
 def main():
+    """Initializes and runs the Qt application."""
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
