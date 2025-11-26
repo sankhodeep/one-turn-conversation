@@ -83,3 +83,11 @@ table tr:nth-child(even) {
 table tr:hover {
     background: #f0f4ff;
 }
+
+/* --- Image Styles --- */
+img {
+    width: 100%;
+    height: auto;
+    display: block; /* Prevents extra space below the image */
+    margin-top: 1em; /* Adds some space between images */
+}

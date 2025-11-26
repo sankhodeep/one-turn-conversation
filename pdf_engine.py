@@ -1,5 +1,7 @@
 import os
 import subprocess
+import base64
+import mimetypes
 from pypdf import PdfWriter, PdfReader
 import html
 import markdown
@@ -104,7 +106,7 @@ def merge_pdfs(main_pdf_path, new_page_path):
         if os.path.exists(new_page_path):
             os.remove(new_page_path)
 
-def create_pdf_page(user_text, model_text, output_path, show_headings=True, user_heading="User Message", model_heading="Model Response"):
+def create_pdf_page(user_text, model_text, image_paths, output_path, show_headings=True, user_heading="User Message", model_heading="Model Response"):
     """
     Creates a single, styled PDF page from user and model text.
 
@@ -115,6 +117,7 @@ def create_pdf_page(user_text, model_text, output_path, show_headings=True, user
     Args:
         user_text (str): The text from the user message input.
         model_text (str): The text from the model response input.
+        image_paths (list): A list of paths to the images to be added.
         output_path (str): The path where the generated PDF page will be saved.
         show_headings (bool, optional): If True, headings are included. Defaults to True.
         user_heading (str, optional): The heading for the user section. Defaults to "User Message".
@@ -144,6 +147,16 @@ def create_pdf_page(user_text, model_text, output_path, show_headings=True, user
             model_text_html = markdown_to_html_final(model_text)
             model_section += f"<div class='content'>{model_text_html}</div>"
 
+        image_section = ""
+        if image_paths:
+            for image_path in image_paths:
+                mime_type, _ = mimetypes.guess_type(image_path)
+                if not mime_type:
+                    mime_type = "application/octet-stream"
+                with open(image_path, "rb") as image_file:
+                    encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+                image_section += f"<img src='data:{mime_type};base64,{encoded_string}'/>"
+
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -161,6 +174,7 @@ def create_pdf_page(user_text, model_text, output_path, show_headings=True, user
         <body>
             {user_section}
             {model_section}
+            {image_section}
         </body>
         </html>
         """

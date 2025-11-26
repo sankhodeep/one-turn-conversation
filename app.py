@@ -1,12 +1,14 @@
 import sys
 import os
 import threading
+import tempfile
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QPushButton, QLabel, QFileDialog, QMessageBox,
-    QCheckBox, QLineEdit
+    QCheckBox, QLineEdit, QListWidget, QListWidgetItem, QMenu
 )
-from PySide6.QtCore import Signal, QObject
+from PySide6.QtCore import Signal, QObject, Qt
+from PySide6.QtGui import QIcon, QKeySequence
 from pdf_engine import create_pdf_page, merge_pdfs
 
 # --- Communication object for worker thread ---
@@ -29,16 +31,20 @@ class PdfWorker(QObject):
     Args:
         user_text (str): The text from the user message input.
         model_text (str): The text from the model response input.
+        image_paths (list): A list of paths to the images to be added.
+        temp_files (list): A list of temporary files to be cleaned up.
         main_pdf_path (str): The absolute path to the main PDF file.
         show_headings (bool): If True, headings will be added to the PDF.
         user_heading (str): The heading for the user message section.
         model_heading (str): The heading for the model response section.
     """
-    def __init__(self, user_text, model_text, main_pdf_path, show_headings, user_heading, model_heading):
+    def __init__(self, user_text, model_text, image_paths, temp_files, main_pdf_path, show_headings, user_heading, model_heading):
         super().__init__()
         self.signals = WorkerSignals()
         self.user_text = user_text
         self.model_text = model_text
+        self.image_paths = image_paths
+        self.temp_files = temp_files
         self.main_pdf_path = main_pdf_path
         self.show_headings = show_headings
         self.user_heading = user_heading
@@ -56,7 +62,7 @@ class PdfWorker(QObject):
             temp_page_path = "_temp_page.pdf"
             
             success_create = create_pdf_page(
-                self.user_text, self.model_text, temp_page_path,
+                self.user_text, self.model_text, self.image_paths, temp_page_path,
                 self.show_headings, self.user_heading, self.model_heading
             )
             if not success_create:
@@ -69,6 +75,72 @@ class PdfWorker(QObject):
             self.signals.finished.emit("Success! Page added.")
         except Exception as e:
             self.signals.finished.emit(f"Error: {e}")
+        finally:
+            for temp_file in self.temp_files:
+                os.remove(temp_file)
+
+# --- Image Drop Widget ---
+class ImageDropWidget(QListWidget):
+    """
+    A QListWidget that accepts drag-and-drop and clipboard pastes of images.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setIconSize(self.sizeHint() / 4)
+        self.temp_files = []
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls() or event.mimeData().hasImage():
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                self.add_image(url.toLocalFile())
+        elif event.mimeData().hasImage():
+            image = event.mimeData().imageData()
+            if image:
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
+                    image.save(temp.name, "PNG")
+                    self.add_image(temp.name)
+                    self.temp_files.append(temp.name)
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.StandardKey.Paste):
+            clipboard = QApplication.clipboard()
+            mime_data = clipboard.mimeData()
+            if mime_data.hasImage():
+                image = clipboard.image()
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
+                    image.save(temp.name, "PNG")
+                    self.add_image(temp.name)
+                    self.temp_files.append(temp.name)
+            elif mime_data.hasUrls():
+                for url in mime_data.urls():
+                    self.add_image(url.toLocalFile())
+        else:
+            super().keyPressEvent(event)
+
+    def contextMenuEvent(self, event):
+        item = self.itemAt(event.pos())
+        if item:
+            menu = QMenu(self)
+            remove_action = menu.addAction("Remove Image")
+            action = menu.exec(self.mapToGlobal(event.pos()))
+            if action == remove_action:
+                self.takeItem(self.row(item))
+
+    def add_image(self, image_path):
+        if os.path.exists(image_path):
+            item = QListWidgetItem()
+            item.setIcon(QIcon(image_path))
+            item.setText(os.path.basename(image_path))
+            item.setData(Qt.UserRole, image_path)
+            self.addItem(item)
 
 # --- Main Application Window ---
 class MainWindow(QMainWindow):
@@ -105,6 +177,11 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.model_heading_entry)
         self.model_text_box = QTextEdit()
         main_layout.addWidget(self.model_text_box)
+
+        # --- Image Drop Area ---
+        main_layout.addWidget(QLabel("Images:"))
+        self.image_drop_widget = ImageDropWidget()
+        main_layout.addWidget(self.image_drop_widget)
 
         # --- File Chooser ---
         file_layout = QHBoxLayout()
@@ -154,8 +231,13 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Status: Processing...")
 
         # --- Setup and run worker thread ---
+        image_paths = []
+        for i in range(self.image_drop_widget.count()):
+            item = self.image_drop_widget.item(i)
+            image_paths.append(item.data(Qt.UserRole))
+
         self.worker = PdfWorker(
-            user_text, model_text, main_pdf_path,
+            user_text, model_text, image_paths, self.image_drop_widget.temp_files, main_pdf_path,
             self.show_headings_check.isChecked(),
             self.user_heading_entry.text().strip(),
             self.model_heading_entry.text().strip()
@@ -181,6 +263,8 @@ class MainWindow(QMainWindow):
             self.status_label.setText(f"Status: {message}")
             self.user_text_box.clear()
             self.model_text_box.clear()
+            self.image_drop_widget.clear()
+            self.image_drop_widget.temp_files.clear()
         self.add_button.setEnabled(True)
 
 def main():
